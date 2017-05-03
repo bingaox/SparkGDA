@@ -149,7 +149,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
     override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
 
-      case RegisterExecutor(executorId, executorRef, hostname, cores, logUrls) =>
+      case RegisterExecutor(executorId, executorRef, hostname, cores, logUrls, bandWidths) =>
         if (executorDataMap.contains(executorId)) {
           executorRef.send(RegisterExecutorFailed("Duplicate executor ID: " + executorId))
           context.reply(true)
@@ -166,7 +166,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
           totalCoreCount.addAndGet(cores)
           totalRegisteredExecutors.addAndGet(1)
           val data = new ExecutorData(executorRef, executorRef.address, hostname,
-            cores, cores, logUrls)
+            cores, cores, logUrls, bandWidths)
           // This must be synchronized because variables mutated
           // in this block are read when requesting executors
           CoarseGrainedSchedulerBackend.this.synchronized {
@@ -210,6 +210,16 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         val reply = SparkAppConfig(sparkProperties,
           SparkEnv.get.securityManager.getIOEncryptionKey())
         context.reply(reply)
+    }
+
+    // lpt
+    private def makeOffersWithLpt() {
+      // Filter out executors under killing
+      val activeExecutors = executorDataMap.filterKeys(executorIsAlive)
+      val workOffers = activeExecutors.map { case (id, executorData) =>
+        new WorkerOfferWithLpt(id, executorData.executorHost, executorData.freeCores, executorData.bandWidths)
+      }.toIndexedSeq
+      launchTasks(scheduler.resourceOffersWithLpt(workOffers))
     }
 
     // Make fake resource offers on all executors

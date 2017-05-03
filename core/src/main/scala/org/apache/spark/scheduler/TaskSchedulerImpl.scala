@@ -22,10 +22,9 @@ import java.util.{Timer, TimerTask}
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
-import scala.collection.Set
+import scala.collection.{Set, mutable}
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet}
 import scala.util.Random
-
 import org.apache.spark._
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.internal.Logging
@@ -35,7 +34,10 @@ import org.apache.spark.scheduler.TaskLocality.TaskLocality
 import org.apache.spark.scheduler.local.LocalSchedulerBackend
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.{AccumulatorV2, ThreadUtils, Utils}
+import org.apache.spark.scheduler.WorkerOfferWithLpt
 
+import scala.collection.mutable.HashMap
+import org.apache.spark.scheduler.Task
 /**
  * Schedules tasks for multiple types of clusters by acting through a SchedulerBackend.
  * It can also work with a local setup by using a [[LocalSchedulerBackend]] and setting
@@ -249,6 +251,92 @@ private[spark] class TaskSchedulerImpl(
       s" ${manager.parent.name}")
   }
 
+  /*  def computeAllMapSize(allMapStatus:ArrayBuffer[Array[MapStatus]]):Long = {
+      var totalSize : Long = 0
+      for(mapInfo <- allMapStatus){
+        for(status <- mapInfo){
+          totalSize += status.getAllSize()
+        }
+      }
+      return totalSize
+    }*/
+
+  def lptBandWidthAware(shuffledOffers: Seq[WorkerOfferWithLpt],
+                        tasks: Seq[ArrayBuffer[TaskDescription]],
+                        availableCpus: Array[Int],
+                        taskSet: TaskSetManager): Boolean = {
+    val launchTask = true
+    val shuffleIdList = taskSet.taskSet.getShuffleIdList()
+    val allMapStatus = new ArrayBuffer[Array[MapStatus]]()
+    var offersToIMap = new HashMap[String, Int]
+    for (i <- 0 to shuffledOffers.size) {
+      offersToIMap.put(shuffledOffers(i).executorId, i)
+    }
+    for (shuffleId <- shuffleIdList) {
+      allMapStatus += mapOutputTracker.getStatuses(shuffleId)
+    }
+    for (task <- taskSet.taskSet.tasks) {
+      var taskTotalSize: Long = 0
+      for (mapStatus <- allMapStatus) {
+        taskTotalSize += MapOutputTracker.convertMapStatusesAndPartitionToSize(mapStatus, task.partitionId, task.partitionId + 1)
+      }
+      task.taskInputSize = taskTotalSize
+    }
+
+    var taskDescriptionArray: Array[TaskDescription] = taskSet.resourceOfferBySize(shuffledOffers, availableCpus)
+    for (task <- taskDescriptionArray) {
+      var i: Int = offersToIMap(task.executorId)
+      tasks(i) += task
+      val tid = task.taskId
+      taskIdToTaskSetManager(tid) = taskSet
+      taskIdToExecutorId(tid) = task.executorId
+      executorIdToRunningTaskIds(task.executorId).add(tid)
+    }
+
+    return launchTask
+  }
+
+  private def resourceOfferSingleTaskSetWithLpt(
+                                                 taskSet: TaskSetManager,
+                                                 maxLocality: TaskLocality,
+                                                 shuffledOffers: Seq[WorkerOfferWithLpt],
+                                                 availableCpus: Array[Int],
+                                                 tasks: IndexedSeq[ArrayBuffer[TaskDescription]]): Boolean = {
+    if (taskSet.taskSet.isResultTaskSet()) {
+      lptBandWidthAware(shuffledOffers, tasks, availableCpus, taskSet)
+    }
+    else {
+      var launchedTask = false
+      for (i <- 0 until shuffledOffers.size) {
+        val execId = shuffledOffers(i).executorId
+        val host = shuffledOffers(i).host
+        if (availableCpus(i) >= CPUS_PER_TASK) {
+          try {
+            for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
+              // 获取可在指定executor上执行的task
+              tasks(i) += task
+              val tid = task.taskId
+              taskIdToTaskSetManager(tid) = taskSet
+              taskIdToExecutorId(tid) = execId
+              executorIdToRunningTaskIds(execId).add(tid)
+              availableCpus(i) -= CPUS_PER_TASK
+              assert(availableCpus(i) >= 0)
+              launchedTask = true
+            }
+          } catch {
+            case e: TaskNotSerializableException =>
+              logError(s"Resource offer failed, task set ${taskSet.name} was not serializable")
+              // Do not offer resources for this task, but don't throw an error to allow other
+              // task sets to be submitted.
+              return launchedTask
+          }
+        }
+      }
+      return launchedTask
+    }
+
+  }
+
   private def resourceOfferSingleTaskSet(
       taskSet: TaskSetManager,
       maxLocality: TaskLocality,
@@ -262,6 +350,7 @@ private[spark] class TaskSchedulerImpl(
       if (availableCpus(i) >= CPUS_PER_TASK) {
         try {
           for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
+            // 获取可在指定executor上执行的task
             tasks(i) += task
             val tid = task.taskId
             taskIdToTaskSetManager(tid) = taskSet
@@ -283,6 +372,67 @@ private[spark] class TaskSchedulerImpl(
     return launchedTask
   }
 
+
+  def resourceOffersWithLpt(offers: IndexedSeq[WorkerOfferWithLpt]): Seq[Seq[TaskDescription]] = synchronized {
+    // Mark each slave as alive and remember its hostname
+    // Also track if new executor is added
+    var newExecAvail = false
+    // 将offers与executor对应
+    for (o <- offers) {
+      // host不包含executor
+      if (!hostToExecutors.contains(o.host)) {
+        hostToExecutors(o.host) = new HashSet[String]()
+      }
+      if (!executorIdToRunningTaskIds.contains(o.executorId)) {
+        hostToExecutors(o.host) += o.executorId
+        executorAdded(o.executorId, o.host)
+        executorIdToHost(o.executorId) = o.host
+        executorIdToRunningTaskIds(o.executorId) = HashSet[Long]()
+        newExecAvail = true
+      }
+      for (rack <- getRackForHost(o.host)) {
+        hostsByRack.getOrElseUpdate(rack, new HashSet[String]()) += o.host
+      }
+    }
+
+    // Randomly shuffle offers to avoid always placing tasks on the same set of workers.
+    val shuffledOffers = Random.shuffle(offers)
+    // Build a list of tasks to assign to each worker.
+    val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores))
+    val availableCpus = shuffledOffers.map(o => o.cores).toArray
+    val sortedTaskSets = rootPool.getSortedTaskSetQueue
+    for (taskSet <- sortedTaskSets) {
+      logDebug("parentName: %s, name: %s, runningTasks: %s".format(
+        taskSet.parent.name, taskSet.name, taskSet.runningTasks))
+      if (newExecAvail) {
+        taskSet.executorAdded()
+      }
+    }
+
+    // Take each TaskSet in our scheduling order, and then offer it each node in increasing order
+    // of locality levels so that it gets a chance to launch local tasks on all of them.
+    // NOTE: the preferredLocality order: PROCESS_LOCAL, NODE_LOCAL, NO_PREF, RACK_LOCAL, ANY
+    for (taskSet <- sortedTaskSets) {
+      var launchedAnyTask = false
+      var launchedTaskAtCurrentMaxLocality = false
+      for (currentMaxLocality <- taskSet.myLocalityLevels) {
+        do {
+          launchedTaskAtCurrentMaxLocality = resourceOfferSingleTaskSetWithLpt(
+            taskSet, currentMaxLocality, shuffledOffers, availableCpus, tasks)
+          launchedAnyTask |= launchedTaskAtCurrentMaxLocality
+        } while (launchedTaskAtCurrentMaxLocality)
+      }
+      if (!launchedAnyTask) {
+        taskSet.abortIfCompletelyBlacklisted(hostToExecutors)
+      }
+    }
+
+    if (tasks.size > 0) {
+      hasLaunchedTask = true
+    }
+    return tasks
+  }
+
   /**
    * Called by cluster manager to offer resources on slaves. We respond by asking our active task
    * sets for tasks in order of priority. We fill each node with tasks in a round-robin manner so
@@ -292,7 +442,9 @@ private[spark] class TaskSchedulerImpl(
     // Mark each slave as alive and remember its hostname
     // Also track if new executor is added
     var newExecAvail = false
+    // 将offers与executor对应
     for (o <- offers) {
+      // host不包含executor
       if (!hostToExecutors.contains(o.host)) {
         hostToExecutors(o.host) = new HashSet[String]()
       }

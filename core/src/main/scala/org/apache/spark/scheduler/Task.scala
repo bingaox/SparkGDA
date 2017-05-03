@@ -22,8 +22,7 @@ import java.nio.ByteBuffer
 import java.util.Properties
 
 import scala.collection.mutable
-import scala.collection.mutable.HashMap
-
+import scala.collection.mutable.{ArrayBuffer, HashMap}
 import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.memory.{MemoryMode, TaskMemoryManager}
@@ -140,6 +139,8 @@ private[spark] abstract class Task[T](
 
   // Map output tracker epoch. Will be set by TaskScheduler.
   var epoch: Long = -1
+
+  var taskInputSize: Long = 0
 
   // Task context, to be initialized in run().
   @transient protected var context: TaskContextImpl = _

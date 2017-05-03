@@ -171,7 +171,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
    *
    * (It would be nice to remove this restriction in the future.)
    */
-  private def getStatuses(shuffleId: Int): Array[MapStatus] = {
+  def getStatuses(shuffleId: Int): Array[MapStatus] = {
     val statuses = mapStatuses.get(shuffleId).orNull
     if (statuses == null) {
       logInfo("Don't have map outputs for shuffle " + shuffleId + ", fetching them")
@@ -704,5 +704,23 @@ private[spark] object MapOutputTracker extends Logging {
     }
 
     splitsByAddress.toSeq
+  }
+
+  def convertMapStatusesAndPartitionToSize(statuses: Array[MapStatus],
+                                           startPartition: Int,
+                                           endPartition: Int
+                                          ): Long = {
+    var totalSize: Long = 0
+    for ((status, mapId) <- statuses.zipWithIndex) {
+      if (status == null) {
+        logInfo("Bingo Error! Mapstatus is None!")
+      } else {
+        for (part <- startPartition until endPartition) {
+          totalSize += status.getSizeForBlock(part)
+        }
+      }
+    }
+
+    totalSize
   }
 }

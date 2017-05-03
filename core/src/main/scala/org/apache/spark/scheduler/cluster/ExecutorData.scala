@@ -19,6 +19,8 @@ package org.apache.spark.scheduler.cluster
 
 import org.apache.spark.rpc.{RpcAddress, RpcEndpointRef}
 
+import scala.collection.mutable.HashMap
+
 /**
  * Grouping of data for an executor used by CoarseGrainedSchedulerBackend.
  *
@@ -29,10 +31,11 @@ import org.apache.spark.rpc.{RpcAddress, RpcEndpointRef}
  * @param totalCores The total number of cores available to the executor
  */
 private[cluster] class ExecutorData(
-   val executorEndpoint: RpcEndpointRef,
-   val executorAddress: RpcAddress,
-   override val executorHost: String,
-   var freeCores: Int,
-   override val totalCores: Int,
-   override val logUrlMap: Map[String, String]
+                                     val executorEndpoint: RpcEndpointRef,
+                                     val executorAddress: RpcAddress,
+                                     override val executorHost: String,
+                                     var freeCores: Int,
+                                     override val totalCores: Int,
+                                     override val logUrlMap: Map[String, String],
+                                     val bandWidths: HashMap[String, Double]
 ) extends ExecutorInfo(executorHost, totalCores, logUrlMap)

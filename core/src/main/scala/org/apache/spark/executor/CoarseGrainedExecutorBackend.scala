@@ -36,6 +36,8 @@ import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.util.{ThreadUtils, Utils}
 
+import scala.collection.mutable.HashMap
+
 private[spark] class CoarseGrainedExecutorBackend(
     override val rpcEnv: RpcEnv,
     driverUrl: String,
@@ -54,12 +56,16 @@ private[spark] class CoarseGrainedExecutorBackend(
   // to be changed so that we don't share the serializer instance across threads
   private[this] val ser: SerializerInstance = env.closureSerializer.newInstance()
 
+  def readBandWidthFromDisk(fileName: String): HashMap[String, Double] = {
+    val executorToAllBandWidthMap = new HashMap[String, Double]
+    return executorToAllBandWidthMap
+  }
   override def onStart() {
     logInfo("Connecting to driver: " + driverUrl)
     rpcEnv.asyncSetupEndpointRefByURI(driverUrl).flatMap { ref =>
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       driver = Some(ref)
-      ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls))
+      ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls, readBandWidthFromDisk("/root/bw.txt")))
     }(ThreadUtils.sameThread).onComplete {
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       case Success(msg) =>

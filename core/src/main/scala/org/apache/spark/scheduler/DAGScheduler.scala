@@ -29,9 +29,7 @@ import scala.concurrent.duration._
 import scala.language.existentials
 import scala.language.postfixOps
 import scala.util.control.NonFatal
-
 import org.apache.commons.lang3.SerializationUtils
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.TaskMetrics
@@ -326,7 +324,7 @@ class DAGScheduler(
     stageIdToStage(id) = stage
     shuffleIdToMapStage(shuffleDep.shuffleId) = stage
     updateJobIdStageIdMaps(jobId, stage)
-
+    // 已经存在的依赖，则找到已经注册的mapstatus
     if (mapOutputTracker.containsShuffle(shuffleDep.shuffleId)) {
       // A previously run stage generated partitions for this shuffle, so for each output
       // that's still available, copy information about that output location to the new stage
@@ -928,6 +926,34 @@ class DAGScheduler(
     }
   }
 
+  /**
+    * Get the shuffleId
+    */
+  private def getDependShuffleId(rdd: RDD[_], jobId: Int): List[Int] = {
+    val parents = new HashSet[Int]
+    val visited = new HashSet[RDD[_]]
+
+    def visit(r: RDD[_]) {
+      if (!visited(r)) {
+        visited += r
+        // Kind of ugly: need to register RDDs with the cache here since
+        // we can't do it in its constructor because # of partitions is unknown
+        for (dep <- r.dependencies) {
+          dep match {
+            case shufDep: ShuffleDependency[_, _, _] =>
+              parents += shufDep.shuffleId
+              return parents
+            case _ =>
+              visit(dep.rdd)
+          }
+        }
+      }
+    }
+
+    visit(rdd)
+    parents.toList
+  }
+
   /** Called when stage's parents are available and we can now do its task. */
   private def submitMissingTasks(stage: Stage, jobId: Int) {
     logDebug("submitMissingTasks(" + stage + ")")
@@ -935,7 +961,7 @@ class DAGScheduler(
     stage.pendingPartitions.clear()
 
     // First figure out the indexes of partition ids to compute.
-    val partitionsToCompute: Seq[Int] = stage.findMissingPartitions()
+    val partitionsToCompute: Seq[Int] = stage.findMissingPartitions() // 找到没有计算出的partition
 
     // Use the scheduling pool, job group, description, etc. from an ActiveJob associated
     // with this Stage
@@ -954,6 +980,7 @@ class DAGScheduler(
           stage = s.id, maxPartitionId = s.rdd.partitions.length - 1)
     }
     val taskIdToLocations: Map[Int, Seq[TaskLocation]] = try {
+      // 保存当前要计算的partition到前面的task的地址
       stage match {
         case s: ShuffleMapStage =>
           partitionsToCompute.map { id => (id, getPreferredLocs(stage.rdd, id))}.toMap
@@ -1036,13 +1063,30 @@ class DAGScheduler(
         return
     }
 
+
     if (tasks.size > 0) {
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingPartitions ++= tasks.map(_.partitionId)
       logDebug("New pending partitions: " + stage.pendingPartitions)
-      taskScheduler.submitTasks(new TaskSet(
-        tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties))
+      val ts = new TaskSet(
+        tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties)
+
+      if (stage.isInstanceOf[ResultStage]) {
+        val isResultTaskSet = true
+        ts.setIsResultTaskSet(isResultTaskSet)
+      }
+      val t = new TaskSet(tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties)
+
+      for (shuffleId <- getDependShuffleId(stage.rdd, jobId)) {
+        for (task <- tasks) {
+          if (task.isInstanceOf[ResultTask]) {
+            t.setShuffleIdList(shuffleId)
+          }
+        }
+      }
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())
+      taskScheduler.submitTasks(t)
+
     } else {
       // Because we posted SparkListenerStageSubmitted earlier, we should mark
       // the stage as completed here in case there are no tasks to run

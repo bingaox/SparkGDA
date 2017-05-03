@@ -19,6 +19,8 @@ package org.apache.spark.scheduler
 
 import java.util.Properties
 
+import scala.collection.mutable.ArrayBuffer
+
 /**
  * A set of tasks submitted together to the low-level TaskScheduler, usually representing
  * missing partitions of a particular stage.
@@ -30,6 +32,36 @@ private[spark] class TaskSet(
     val priority: Int,
     val properties: Properties) {
   val id: String = stageId + "." + stageAttemptId
+
+  private var resultTaskSetMode: Boolean = false
+
+  def setIsResultTaskSet(taskSetMode: Boolean) {
+    resultTaskSetMode = taskSetMode
+  }
+
+  def isResultTaskSet(): Boolean = {
+    return resultTaskSetMode
+  }
+
+  private var shuffuleIdList: ArrayBuffer[Int] = null
+
+  def setShuffleIdList(shuflleId: Int) {
+    shuffuleIdList += shuflleId
+  }
+
+  def getShuffleIdList() {
+    return shuffuleIdList
+  }
+
+  private var allMapStatus: ArrayBuffer[Array[MapStatus]] = null
+
+  def setAllMapStatus(mapStatusArray: ArrayBuffer[Array[MapStatus]]) {
+    allMapStatus = mapStatusArray
+  }
+
+  def getAllMapSatus(): ArrayBuffer[Array[MapStatus]] = {
+    return allMapStatus
+  }
 
   override def toString: String = "TaskSet " + id
 }

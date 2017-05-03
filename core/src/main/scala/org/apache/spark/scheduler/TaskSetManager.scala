@@ -32,6 +32,8 @@ import org.apache.spark.scheduler.SchedulingMode._
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, Utils}
 
+import scala.collection.mutable.HashMap
+import scala.util.control._
 /**
  * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
  * each task, retries tasks if they fail (up to a limited number of times), and
@@ -83,6 +85,8 @@ private[spark] class TaskSetManager(
   var parent: Pool = null
   var totalResultSize = 0L
   var calculatedTasks = 0
+
+  val CPUS_PER_TASK = conf.getInt("spark.task.cpus", 1)
 
   private val taskSetBlacklistHelperOpt: Option[TaskSetBlacklist] = {
     if (BlacklistTracker.isBlacklistEnabled(conf)) {
@@ -294,7 +298,7 @@ private[spark] class TaskSetManager(
         val executors = prefs.flatMap(_ match {
           case e: ExecutorCacheTaskLocation => Some(e.executorId)
           case _ => None
-        });
+        })
         if (executors.contains(execId)) {
           speculatableTasks -= index
           return Some((index, TaskLocality.PROCESS_LOCAL))
@@ -394,6 +398,111 @@ private[spark] class TaskSetManager(
       case (taskIndex, allowedLocality) => (taskIndex, allowedLocality, true)}
   }
 
+  def getBetterExecutor(task: Task[_],
+                        shuffledOffers: Seq[WorkerOfferWithLpt],
+                        availableCpus: Array[Int]): Array[String] = {
+    val hostInputDataSizeMap = new HashMap[String, Long]
+    for (mapInfo <- taskSet.getAllMapSatus()) {
+      for (status <- mapInfo) {
+        hostInputDataSizeMap(status.location.host) = hostInputDataSizeMap(status.location.host) + status.getSizeForBlock(task.partitionId)
+      }
+    }
+
+    var hostToTransTimeMap = new HashMap[String, Double]
+
+    for (i <- 0 to shuffledOffers.length) {
+      val offer = shuffledOffers(i)
+      val curHostName = offer.host
+      var transTime: Double = 0
+      for ((host, inputDataSize) <- hostInputDataSizeMap) {
+        transTime += inputDataSize / offer.bandWidths(host)
+      }
+      hostToTransTimeMap(curHostName) = transTime
+    }
+
+    var desireHost = hostToTransTimeMap.toSeq.sortBy(_._2).reverse.map(v => v._1).toArray[String]
+    return desireHost
+  }
+
+  def resourceOfferBySize(shuffledOffers: Seq[WorkerOfferWithLpt],
+                          availableCpusBuffer: Array[Int]): Array[TaskDescription] = {
+    val curTime = clock.getTimeMillis()
+    val taskLocality = TaskLocality.ANY
+    val speculative = false
+    var availableCpus = availableCpusBuffer
+    val sortedTasks = taskSet.tasks.sortBy(_.taskInputSize)
+    val hostOfferMap = new HashMap[String, Int]
+    var hostExecutorIdMap = new HashMap[String, String]
+    var taskDescriptionArray: Array[TaskDescription] = null
+    for (i <- 0 until shuffledOffers.size) {
+      val execId = shuffledOffers(i).executorId
+      val host = shuffledOffers(i).host
+      hostOfferMap.put(host, i)
+      hostExecutorIdMap.put(host, execId)
+    }
+    for (index <- 0 to sortedTasks.size) {
+      val task = sortedTasks(index)
+      val taskId = sched.newTaskId()
+
+      copiesRunning(index) += 1
+      val attemptNum = taskAttempts(index).size
+      val desireHost = getBetterExecutor(task, shuffledOffers, availableCpus)
+      var execId: String = null
+      var host: String = null
+      var loop = new Breaks
+      loop.breakable {
+        for (curHost <- desireHost) {
+          val offerNum = hostOfferMap(curHost)
+          if (availableCpus(offerNum) >= CPUS_PER_TASK) {
+            execId = shuffledOffers(offerNum).executorId
+            host = shuffledOffers(offerNum).host
+            availableCpus(offerNum) -= CPUS_PER_TASK
+            loop.break
+          }
+        }
+      }
+      val info = new TaskInfo(taskId, index, attemptNum, curTime,
+        execId, host, taskLocality, speculative)
+      taskInfos(taskId) = info
+      taskAttempts(index) = info :: taskAttempts(index)
+      // Serialize and return the task
+      val startTime = clock.getTimeMillis()
+      val serializedTask: ByteBuffer = try {
+        Task.serializeWithDependencies(task, sched.sc.addedFiles, sched.sc.addedJars, ser)
+      } catch {
+        // If the task cannot be serialized, then there's no point to re-attempt the task,
+        // as it will always fail. So just abort the whole task-set.
+        case NonFatal(e) =>
+          val msg = s"Failed to serialize task $taskId, not attempting to retry it."
+          logError(msg, e)
+          abort(s"$msg Exception during serialization: $e")
+          throw new TaskNotSerializableException(e)
+      }
+      if (serializedTask.limit > TaskSetManager.TASK_SIZE_TO_WARN_KB * 1024 &&
+        !emittedTaskSizeWarning) {
+        emittedTaskSizeWarning = true
+        logWarning(s"Stage ${task.stageId} contains a task of very large size " +
+          s"(${serializedTask.limit / 1024} KB). The maximum recommended task size is " +
+          s"${TaskSetManager.TASK_SIZE_TO_WARN_KB} KB.")
+      }
+      addRunningTask(taskId)
+
+      // We used to log the time it takes to serialize the task, but task size is already
+      // a good proxy to task serialization time.
+      // val timeTaken = clock.getTime() - startTime
+      val taskName = s"task ${info.id} in stage ${taskSet.id}"
+      logInfo(s"Starting $taskName (TID $taskId, $host, executor ${info.executorId}, " +
+        s"partition ${task.partitionId}, $taskLocality, ${serializedTask.limit} bytes)")
+
+      sched.dagScheduler.taskStarted(task, info)
+      var t = new TaskDescription(taskId = taskId, attemptNumber = attemptNum, execId,
+        taskName, index, serializedTask)
+
+      taskDescriptionArray :+ t
+    }
+
+    return taskDescriptionArray
+  }
   /**
    * Respond to an offer of a single executor from the scheduler by finding a task
    *

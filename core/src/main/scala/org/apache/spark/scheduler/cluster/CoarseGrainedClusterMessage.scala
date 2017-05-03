@@ -24,6 +24,8 @@ import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.scheduler.ExecutorLossReason
 import org.apache.spark.util.SerializableBuffer
 
+import scala.collection.mutable.HashMap
+
 private[spark] sealed trait CoarseGrainedClusterMessage extends Serializable
 
 private[spark] object CoarseGrainedClusterMessages {
@@ -52,11 +54,12 @@ private[spark] object CoarseGrainedClusterMessages {
 
   // Executors to driver
   case class RegisterExecutor(
-      executorId: String,
-      executorRef: RpcEndpointRef,
-      hostname: String,
-      cores: Int,
-      logUrls: Map[String, String])
+                               executorId: String,
+                               executorRef: RpcEndpointRef,
+                               hostname: String,
+                               cores: Int,
+                               logUrls: Map[String, String],
+                               bandWidths: HashMap[String, Double])
     extends CoarseGrainedClusterMessage
 
   case class StatusUpdate(executorId: String, taskId: Long, state: TaskState,

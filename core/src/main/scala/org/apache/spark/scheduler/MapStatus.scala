@@ -19,8 +19,8 @@ package org.apache.spark.scheduler
 
 import java.io.{Externalizable, ObjectInput, ObjectOutput}
 
+import org.apache.spark.MapOutputTracker
 import org.roaringbitmap.RoaringBitmap
-
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.Utils
 
@@ -39,6 +39,8 @@ private[spark] sealed trait MapStatus {
    * necessary for correctness, since block fetchers are allowed to skip zero-size blocks.
    */
   def getSizeForBlock(reduceId: Int): Long
+
+  def getAllSize(): Long
 }
 
 
@@ -79,6 +81,8 @@ private[spark] object MapStatus {
       math.pow(LOG_BASE, compressedSize & 0xFF).toLong
     }
   }
+
+
 }
 
 
@@ -90,8 +94,8 @@ private[spark] object MapStatus {
  * @param compressedSizes size of the blocks, indexed by reduce partition id.
  */
 private[spark] class CompressedMapStatus(
-    private[this] var loc: BlockManagerId,
-    private[this] var compressedSizes: Array[Byte])
+                                          private[this] var loc: BlockManagerId,
+                                          var compressedSizes: Array[Byte])
   extends MapStatus with Externalizable {
 
   protected def this() = this(null, null.asInstanceOf[Array[Byte]])  // For deserialization only
@@ -117,6 +121,12 @@ private[spark] class CompressedMapStatus(
     val len = in.readInt()
     compressedSizes = new Array[Byte](len)
     in.readFully(compressedSizes)
+  }
+
+  override def getAllSize(): Long = {
+    var totalSize: Long = 0
+    totalSize = compressedSizes.map(MapStatus.decompressSize).sum
+    return totalSize
   }
 }
 
@@ -163,6 +173,12 @@ private[spark] class HighlyCompressedMapStatus private (
     emptyBlocks = new RoaringBitmap()
     emptyBlocks.readExternal(in)
     avgSize = in.readLong()
+  }
+
+  override def getAllSize(): Long = {
+    var totalSize: Long = 0
+    totalSize = avgSize * numNonEmptyBlocks
+    return totalSize
   }
 }
 
