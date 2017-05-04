@@ -142,6 +142,14 @@ private[spark] abstract class Task[T](
 
   var taskInputSize: Long = 0
 
+  def setTaskInputSzie(inputSize: Long) {
+    taskInputSize = inputSize
+  }
+
+  def getTaskInputSize(): Long = {
+    return taskInputSize
+  }
+
   // Task context, to be initialized in run().
   @transient protected var context: TaskContextImpl = _
 

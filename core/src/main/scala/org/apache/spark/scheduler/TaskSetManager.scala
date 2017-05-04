@@ -398,10 +398,10 @@ private[spark] class TaskSetManager(
       case (taskIndex, allowedLocality) => (taskIndex, allowedLocality, true)}
   }
 
-  def getBetterExecutor(task: Task[_],
+  def getDesireExecutor(task: Task[_],
                         shuffledOffers: Seq[WorkerOfferWithLpt],
                         availableCpus: Array[Int]): Array[String] = {
-    val hostInputDataSizeMap = new HashMap[String, Long]
+    val hostInputDataSizeMap = new HashMap[String, Long]()
     for (mapInfo <- taskSet.getAllMapSatus()) {
       for (status <- mapInfo) {
         hostInputDataSizeMap(status.location.host) = hostInputDataSizeMap(status.location.host) + status.getSizeForBlock(task.partitionId)
@@ -433,7 +433,7 @@ private[spark] class TaskSetManager(
     val sortedTasks = taskSet.tasks.sortBy(_.taskInputSize)
     val hostOfferMap = new HashMap[String, Int]
     var hostExecutorIdMap = new HashMap[String, String]
-    var taskDescriptionArray: Array[TaskDescription] = null
+    var taskDescriptionArray = Seq[TaskDescription]()
     for (i <- 0 until shuffledOffers.size) {
       val execId = shuffledOffers(i).executorId
       val host = shuffledOffers(i).host
@@ -446,10 +446,10 @@ private[spark] class TaskSetManager(
 
       copiesRunning(index) += 1
       val attemptNum = taskAttempts(index).size
-      val desireHost = getBetterExecutor(task, shuffledOffers, availableCpus)
+      val desireHost = getDesireExecutor(task, shuffledOffers, availableCpus)
       var execId: String = null
       var host: String = null
-      var loop = new Breaks
+      var loop = new Breaks()
       loop.breakable {
         for (curHost <- desireHost) {
           val offerNum = hostOfferMap(curHost)
@@ -498,10 +498,10 @@ private[spark] class TaskSetManager(
       var t = new TaskDescription(taskId = taskId, attemptNumber = attemptNum, execId,
         taskName, index, serializedTask)
 
-      taskDescriptionArray :+ t
+      taskDescriptionArray = taskDescriptionArray :+ t
     }
 
-    return taskDescriptionArray
+    return taskDescriptionArray.toArray
   }
   /**
    * Respond to an offer of a single executor from the scheduler by finding a task

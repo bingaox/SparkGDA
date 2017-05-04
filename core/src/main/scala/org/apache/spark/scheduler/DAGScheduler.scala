@@ -1068,13 +1068,7 @@ class DAGScheduler(
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingPartitions ++= tasks.map(_.partitionId)
       logDebug("New pending partitions: " + stage.pendingPartitions)
-      val ts = new TaskSet(
-        tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties)
 
-      if (stage.isInstanceOf[ResultStage]) {
-        val isResultTaskSet = true
-        ts.setIsResultTaskSet(isResultTaskSet)
-      }
       val t = new TaskSet(tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties)
 
       for (shuffleId <- getDependShuffleId(stage.rdd, jobId)) {
@@ -1083,6 +1077,10 @@ class DAGScheduler(
             t.setShuffleIdList(shuffleId)
           }
         }
+      }
+      if (stage.isInstanceOf[ResultStage]) {
+        val isResultTaskSet = true
+        t.setIsResultTaskSet(isResultTaskSet)
       }
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())
       taskScheduler.submitTasks(t)

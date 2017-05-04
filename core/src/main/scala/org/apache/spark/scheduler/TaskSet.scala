@@ -43,7 +43,7 @@ private[spark] class TaskSet(
     return resultTaskSetMode
   }
 
-  private var shuffuleIdList: ArrayBuffer[Int] = null
+  private var shuffuleIdList = ArrayBuffer[Int]()
 
   def setShuffleIdList(shuflleId: Int) {
     shuffuleIdList += shuflleId
@@ -53,7 +53,7 @@ private[spark] class TaskSet(
     return shuffuleIdList
   }
 
-  private var allMapStatus: ArrayBuffer[Array[MapStatus]] = null
+  private var allMapStatus = ArrayBuffer[Array[MapStatus]]()
 
   def setAllMapStatus(mapStatusArray: ArrayBuffer[Array[MapStatus]]) {
     allMapStatus = mapStatusArray

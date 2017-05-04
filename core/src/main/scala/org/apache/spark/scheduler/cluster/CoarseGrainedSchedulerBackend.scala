@@ -135,7 +135,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         }
 
       case ReviveOffers =>
-        makeOffers()
+        makeOffersWithLpt()
 
       case KillTask(taskId, executorId, interruptThread) =>
         executorDataMap.get(executorId) match {
