@@ -942,7 +942,6 @@ class DAGScheduler(
           dep match {
             case shufDep: ShuffleDependency[_, _, _] =>
               parents += shufDep.shuffleId
-              return parents
             case _ =>
               visit(dep.rdd)
           }
@@ -1073,7 +1072,7 @@ class DAGScheduler(
 
       for (shuffleId <- getDependShuffleId(stage.rdd, jobId)) {
         for (task <- tasks) {
-          if (task.isInstanceOf[ResultTask]) {
+          if (task.isInstanceOf[ResultTask[_,_]]) {
             t.setShuffleIdList(shuffleId)
           }
         }
