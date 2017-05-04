@@ -87,3 +87,5 @@ spark-warehouse/
 *.Rproj.*
 
 .Rproj.user
+!/scalastyle-on-compile.generated.xml
+!/spark-parent_2.11.iml
