@@ -34,10 +34,8 @@ import org.apache.spark.scheduler.TaskLocality.TaskLocality
 import org.apache.spark.scheduler.local.LocalSchedulerBackend
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.{AccumulatorV2, ThreadUtils, Utils}
-import org.apache.spark.scheduler.WorkerOfferWithLpt
 
 import scala.collection.mutable.HashMap
-import org.apache.spark.scheduler.Task
 /**
  * Schedules tasks for multiple types of clusters by acting through a SchedulerBackend.
  * It can also work with a local setup by using a [[LocalSchedulerBackend]] and setting

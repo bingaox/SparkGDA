@@ -24,6 +24,8 @@ import scala.collection.mutable
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
+import scala.collection.mutable.HashMap
+
 import org.mockito.Matchers
 import org.mockito.Matchers._
 import org.mockito.Mockito.{mock, spy, verify, when}
@@ -173,10 +175,14 @@ class HeartbeatReceiverSuite
     val dummyExecutorEndpoint2 = new FakeExecutorEndpoint(rpcEnv)
     val dummyExecutorEndpointRef1 = rpcEnv.setupEndpoint("fake-executor-1", dummyExecutorEndpoint1)
     val dummyExecutorEndpointRef2 = rpcEnv.setupEndpoint("fake-executor-2", dummyExecutorEndpoint2)
+    var executor1BWMap = new HashMap[String,Double]
+    executor1BWMap.put(executorId2,100)
+    var executor2BWMap = new HashMap[String,Double]
+    executor2BWMap.put(executorId1,100)
     fakeSchedulerBackend.driverEndpoint.askWithRetry[Boolean](
-      RegisterExecutor(executorId1, dummyExecutorEndpointRef1, "1.2.3.4", 0, Map.empty))
+      RegisterExecutor(executorId1, dummyExecutorEndpointRef1, "1.2.3.4", 0, Map.empty,executor1BWMap))
     fakeSchedulerBackend.driverEndpoint.askWithRetry[Boolean](
-      RegisterExecutor(executorId2, dummyExecutorEndpointRef2, "1.2.3.5", 0, Map.empty))
+      RegisterExecutor(executorId2, dummyExecutorEndpointRef2, "1.2.3.5", 0, Map.empty, executor2BWMap))
     heartbeatReceiverRef.askWithRetry[Boolean](TaskSchedulerIsSet)
     addExecutorAndVerify(executorId1)
     addExecutorAndVerify(executorId2)

@@ -49,7 +49,7 @@ private[spark] class TaskSet(
     shuffuleIdList += shuflleId
   }
 
-  def getShuffleIdList() {
+  def getShuffleIdList(): ArrayBuffer[Int] = {
     return shuffuleIdList
   }
 

@@ -62,6 +62,7 @@ private[spark] class CoarseGrainedExecutorBackend(
     var sourceFile = Source.fromFile(fileName)
     var lines = sourceFile.getLines()
     var hostToBandWidth = new HashMap[String, Double]
+    hostToBandWidth.put(hostName,100)
     lines.foreach(
       line => {
         var s = line.split(" ")
