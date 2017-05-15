@@ -19,11 +19,9 @@ package org.apache.spark.deploy
 
 import scala.collection.mutable
 import scala.concurrent.duration._
-
 import org.mockito.Mockito.{mock, when}
 import org.scalatest.{BeforeAndAfterAll, PrivateMethodTester}
 import org.scalatest.concurrent.Eventually._
-
 import org.apache.spark._
 import org.apache.spark.deploy.DeployMessages.{MasterStateResponse, RequestMasterState}
 import org.apache.spark.deploy.master.ApplicationInfo
@@ -33,6 +31,8 @@ import org.apache.spark.rpc.{RpcAddress, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler.TaskSchedulerImpl
 import org.apache.spark.scheduler.cluster._
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages.RegisterExecutor
+
+import scala.collection.mutable.HashMap
 
 /**
  * End-to-end tests for dynamic allocation in standalone mode.
@@ -560,7 +560,9 @@ class StandaloneDynamicAllocationSuite
       val endpointRef = mock(classOf[RpcEndpointRef])
       val mockAddress = mock(classOf[RpcAddress])
       when(endpointRef.address).thenReturn(mockAddress)
-      val message = RegisterExecutor(id, endpointRef, "localhost", 10, Map.empty)
+      var executor1BWMap = new HashMap[String,Double]
+      executor1BWMap.put("testhost",100)
+      val message = RegisterExecutor(id, endpointRef, "localhost", 10, Map.empty,executor1BWMap)
       val backend = sc.schedulerBackend.asInstanceOf[CoarseGrainedSchedulerBackend]
       backend.driverEndpoint.askWithRetry[Boolean](message)
     }
