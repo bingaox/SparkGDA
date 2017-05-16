@@ -447,8 +447,8 @@ private[spark] class TaskSetManager(
       copiesRunning(index) += 1
       val attemptNum = taskAttempts(index).size
       val desireHost = getDesireExecutor(task, shuffledOffers, availableCpus)
-      var execId: String = null
-      var host: String = null
+      var execId: String = ""
+      var host: String = ""
       var loop = new Breaks()
       loop.breakable {
         for (curHost <- desireHost) {
