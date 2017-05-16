@@ -420,6 +420,7 @@ private[spark] class TaskSetManager(
       hostToTransTimeMap(curHostName) = transTime
     }
 
+    logInfo("****1"+hostInputDataSizeMap.toSeq.toString()+"\n\n")
     var desireHost = hostToTransTimeMap.toSeq.sortBy(_._2).reverse.map(v => v._1).toSeq
     return desireHost
   }
@@ -447,7 +448,7 @@ private[spark] class TaskSetManager(
       copiesRunning(index) += 1
       val attemptNum = taskAttempts(index).size
       val desireHost = getDesireExecutor(task, shuffledOffers, availableCpus)
-      logInfo("\n\n\n\n\nDesire Host is"+desireHost.foreach(print))
+      logInfo("**********2Desire Host is"+desireHost.foreach(print))
       var execId: String = ""
       var host: String = ""
       var loop = new Breaks()
