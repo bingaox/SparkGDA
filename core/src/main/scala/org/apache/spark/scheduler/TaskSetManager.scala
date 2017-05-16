@@ -463,6 +463,7 @@ private[spark] class TaskSetManager(
           }
         }
       }
+      
       val info = new TaskInfo(taskId, index, attemptNum, curTime,
         execId, host, taskLocality, speculative)
       taskInfos(taskId) = info
