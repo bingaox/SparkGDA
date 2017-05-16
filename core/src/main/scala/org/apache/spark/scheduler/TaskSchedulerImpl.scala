@@ -267,7 +267,7 @@ private[spark] class TaskSchedulerImpl(
     val shuffleIdList = taskSet.taskSet.getShuffleIdList()
     val allMapStatus = new ArrayBuffer[Array[MapStatus]]()
     var offersToIMap = new HashMap[String, Int]
-    for (i <- 0 to shuffledOffers.size) {
+    for (i <- 0 until  shuffledOffers.size) {
       offersToIMap.put(shuffledOffers(i).executorId, i)
     }
     for (shuffleId <- shuffleIdList) {

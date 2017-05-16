@@ -410,7 +410,7 @@ private[spark] class TaskSetManager(
 
     var hostToTransTimeMap = new HashMap[String, Double]
 
-    for (i <- 0 to shuffledOffers.length) {
+    for (i <- 0 until shuffledOffers.length) {
       val offer = shuffledOffers(i)
       val curHostName = offer.host
       var transTime: Double = 0
@@ -440,7 +440,7 @@ private[spark] class TaskSetManager(
       hostOfferMap.put(host, i)
       hostExecutorIdMap.put(host, execId)
     }
-    for (index <- 0 to sortedTasks.size) {
+    for (index <- 0 until sortedTasks.size) {
       val task = sortedTasks(index)
       val taskId = sched.newTaskId()
 
@@ -495,8 +495,8 @@ private[spark] class TaskSetManager(
         s"partition ${task.partitionId}, $taskLocality, ${serializedTask.limit} bytes)")
 
       sched.dagScheduler.taskStarted(task, info)
-      var t = new TaskDescription(taskId = taskId, attemptNumber = attemptNum, execId,
-        taskName, index, serializedTask)
+      var t = new TaskDescription(taskId = taskId, attemptNumber = attemptNum, executorId = execId,
+        name=taskName, index = index, serializedTask)
 
       taskDescriptionArray = taskDescriptionArray :+ t
     }
