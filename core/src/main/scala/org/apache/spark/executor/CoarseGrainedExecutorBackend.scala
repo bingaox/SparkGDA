@@ -85,7 +85,7 @@ private[spark] class CoarseGrainedExecutorBackend(
     rpcEnv.asyncSetupEndpointRefByURI(driverUrl).flatMap { ref =>
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       driver = Some(ref)
-      ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls, readBandWidthFromDisk(bandWidthFileName, hostname)))
+      ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls, readBandWidthFromDisk("/root/bw.txt", hostname)))
     }(ThreadUtils.sameThread).onComplete {
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       case Success(msg) =>
