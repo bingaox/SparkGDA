@@ -401,6 +401,7 @@ private[spark] class TaskSetManager(
   def getDesireExecutor(task: Task[_],
                         shuffledOffers: Seq[WorkerOfferWithLpt],
                         availableCpus: Array[Int]): Seq[String] = {
+    shuffledOffers.foreach(a=>println("&&&&&&&&&&&&"+a.host))
     val hostInputDataSizeMap = new HashMap[String, Long]()
     for (mapInfo <- taskSet.getAllMapSatus()) {
       for (status <- mapInfo) {

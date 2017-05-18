@@ -216,6 +216,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     private def makeOffersWithLpt() {
       // Filter out executors under killing
       val activeExecutors = executorDataMap.filterKeys(executorIsAlive)
+      activeExecutors.map(a=>println("!!!!!!!!!"+a._2.executorAddress+a._2.executorHost))
       val workOffers = activeExecutors.map { case (id, executorData) =>
         new WorkerOfferWithLpt(id, executorData.executorHost, executorData.freeCores, executorData.bandWidths)
       }.toIndexedSeq
