@@ -220,6 +220,10 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
       val workOffers = activeExecutors.map { case (id, executorData) =>
         new WorkerOfferWithLpt(id, executorData.executorHost, executorData.freeCores, executorData.bandWidths)
       }.toIndexedSeq
+
+      for(x <- workOffers){
+        logInfo("**********"+x.host)
+      }
       launchTasks(scheduler.resourceOffersWithLpt(workOffers))
     }
 
