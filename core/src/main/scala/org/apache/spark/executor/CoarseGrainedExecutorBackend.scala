@@ -62,6 +62,7 @@ private[spark] class CoarseGrainedExecutorBackend(
     var sourceFile = Source.fromFile(fileName)
     var lines = sourceFile.getLines()
     var hostToBandWidth = new HashMap[String, Double]
+    logInfo("#####################################"+hostName)
     hostToBandWidth.put(hostName,100)
     lines.foreach(
       line => {
@@ -85,7 +86,7 @@ private[spark] class CoarseGrainedExecutorBackend(
     rpcEnv.asyncSetupEndpointRefByURI(driverUrl).flatMap { ref =>
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       driver = Some(ref)
-      ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls, readBandWidthFromDisk("/root/bw.txt", hostname)))
+      ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls, readBandWidthFromDisk("/root/bw.txt", self.address.toString())))
     }(ThreadUtils.sameThread).onComplete {
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       case Success(msg) =>
