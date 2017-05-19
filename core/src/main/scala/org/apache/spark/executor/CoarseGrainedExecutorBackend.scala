@@ -83,6 +83,7 @@ private[spark] class CoarseGrainedExecutorBackend(
   override def onStart() {
     //val bandWidthFileName = env.conf.get("spark.env.bandwidthFileName")
     logInfo("Connecting to driver: " + driverUrl)
+    logInfo("cur hostname is: " + hostname)
     rpcEnv.asyncSetupEndpointRefByURI(driverUrl).flatMap { ref =>
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       driver = Some(ref)
