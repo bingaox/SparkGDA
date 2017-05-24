@@ -58,10 +58,10 @@ private[spark] class CoarseGrainedExecutorBackend(
   // to be changed so that we don't share the serializer instance across threads
   private[this] val ser: SerializerInstance = env.closureSerializer.newInstance()
 
-  def readBandWidthFromDisk(fileName: String, hostName: String): HashMap[String, Double] = {
+  def readBandWidthFromDisk(fileName: String, hostName: String): mutable.HashMap[String, Double] = {
     var sourceFile = Source.fromFile(fileName)
     var lines = sourceFile.getLines()
-    var hostToBandWidth = new HashMap[String, Double]
+    var hostToBandWidth = new mutable.HashMap[String, Double]
     hostToBandWidth.put(hostName,100)
     lines.foreach(
       line => {
