@@ -58,10 +58,11 @@ private[spark] class CoarseGrainedExecutorBackend(
   // to be changed so that we don't share the serializer instance across threads
   private[this] val ser: SerializerInstance = env.closureSerializer.newInstance()
 
-  def readBandWidthFromDisk(fileName: String, hostName: String): mutable.HashMap[String, Double] = {
+  def readBandWidthFromDisk(fileName: String, hostName: String): HashMap[String, Double] = {
     var sourceFile = Source.fromFile(fileName)
     var lines = sourceFile.getLines()
-    var hostToBandWidth = new mutable.HashMap[String, Double]
+    var hostToBandWidth = new HashMap[String, Double]
+    logInfo("#####################################"+hostName)
     hostToBandWidth.put(hostName,100)
     lines.foreach(
       line => {
@@ -80,12 +81,13 @@ private[spark] class CoarseGrainedExecutorBackend(
   }
 
   override def onStart() {
-    val bandWidthFileName = env.conf.get("spark.env.bandwidthFileName")
+    //val bandWidthFileName = env.conf.get("spark.env.bandwidthFileName")
     logInfo("Connecting to driver: " + driverUrl)
+    logInfo("cur hostname is: " + hostname)
     rpcEnv.asyncSetupEndpointRefByURI(driverUrl).flatMap { ref =>
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       driver = Some(ref)
-      ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls, readBandWidthFromDisk(bandWidthFileName, hostname)))
+      ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls, readBandWidthFromDisk("/root/bw.txt", self.address.toString())))
     }(ThreadUtils.sameThread).onComplete {
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       case Success(msg) =>

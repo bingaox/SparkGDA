@@ -400,7 +400,8 @@ private[spark] class TaskSetManager(
 
   def getDesireExecutor(task: Task[_],
                         shuffledOffers: Seq[WorkerOfferWithLpt],
-                        availableCpus: Array[Int]): Array[String] = {
+                        availableCpus: Array[Int]): Seq[String] = {
+    shuffledOffers.foreach(a=>println("&&&&&&&&&&&&"+a.host))
     val hostInputDataSizeMap = new HashMap[String, Long]()
     for (mapInfo <- taskSet.getAllMapSatus()) {
       for (status <- mapInfo) {
@@ -410,7 +411,7 @@ private[spark] class TaskSetManager(
 
     var hostToTransTimeMap = new HashMap[String, Double]
 
-    for (i <- 0 to shuffledOffers.length) {
+    for (i <- 0 until shuffledOffers.length) {
       val offer = shuffledOffers(i)
       val curHostName = offer.host
       var transTime: Double = 0
@@ -420,7 +421,8 @@ private[spark] class TaskSetManager(
       hostToTransTimeMap(curHostName) = transTime
     }
 
-    var desireHost = hostToTransTimeMap.toSeq.sortBy(_._2).reverse.map(v => v._1).toArray[String]
+    logInfo("****1"+hostInputDataSizeMap.toSeq.toString()+"\n\n")
+    var desireHost = hostToTransTimeMap.toSeq.sortBy(_._2).reverse.map(v => v._1).toSeq
     return desireHost
   }
 
@@ -440,15 +442,16 @@ private[spark] class TaskSetManager(
       hostOfferMap.put(host, i)
       hostExecutorIdMap.put(host, execId)
     }
-    for (index <- 0 to sortedTasks.size) {
+    for (index <- 0 until sortedTasks.size) {
       val task = sortedTasks(index)
       val taskId = sched.newTaskId()
 
       copiesRunning(index) += 1
       val attemptNum = taskAttempts(index).size
       val desireHost = getDesireExecutor(task, shuffledOffers, availableCpus)
-      var execId: String = null
-      var host: String = null
+      logInfo("**********2Desire Host is"+desireHost.foreach(print))
+      var execId: String = ""
+      var host: String = ""
       var loop = new Breaks()
       loop.breakable {
         for (curHost <- desireHost) {
@@ -461,6 +464,7 @@ private[spark] class TaskSetManager(
           }
         }
       }
+
       val info = new TaskInfo(taskId, index, attemptNum, curTime,
         execId, host, taskLocality, speculative)
       taskInfos(taskId) = info
@@ -495,8 +499,8 @@ private[spark] class TaskSetManager(
         s"partition ${task.partitionId}, $taskLocality, ${serializedTask.limit} bytes)")
 
       sched.dagScheduler.taskStarted(task, info)
-      var t = new TaskDescription(taskId = taskId, attemptNumber = attemptNum, execId,
-        taskName, index, serializedTask)
+      var t = new TaskDescription(taskId = taskId, attemptNumber = attemptNum, executorId = execId,
+        name=taskName, index = index, serializedTask)
 
       taskDescriptionArray = taskDescriptionArray :+ t
     }
